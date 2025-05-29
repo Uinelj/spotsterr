@@ -22,5 +22,5 @@ pub(crate) async fn fetch_playlist<C: BaseClient>(
     info!(msg = "fetching playlist", id = id);
     let pl_id = PlaylistId::from_id(id)?;
     let pl = client.playlist_items(pl_id, None, None);
-    Ok(pl.map(|item| handle_item(item)))
+    Ok(pl.map(handle_item))
 }
