@@ -3,6 +3,8 @@ use futures_util::StreamExt;
 
 use playlist::fetch_playlist;
 use rspotify::{AuthCodePkceSpotify, Credentials, OAuth, prelude::*, scopes};
+use score::search;
+use tracing::warn;
 mod playlist;
 mod score;
 
@@ -50,6 +52,12 @@ async fn main() {
         .await
         .unwrap();
     while let Some(full_track) = tracks.next().await {
-        println!("{:?}", full_track.unwrap().name);
+        let full_track = full_track.unwrap();
+        let resp = search(&full_track.name).await.unwrap();
+        if let Some(song) = resp.get(0) {
+            println!("{} -> {}", full_track.name, song.link())
+        } else {
+            warn!("No song found for track: {}", full_track.name);
+        }
     }
 }
