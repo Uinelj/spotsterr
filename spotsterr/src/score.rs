@@ -49,25 +49,25 @@ pub async fn search(query: &str) -> Result<Vec<Song>, Error> {
     let text = resp.await.unwrap().text().await.unwrap();
     let document = Html::parse_document(&text);
     let sel = Selector::parse("script[id=state]").unwrap();
-    let list = if let Some(text) = document.select(&sel).next() {
+    
+    if let Some(text) = document.select(&sel).next() {
         let to_deser = text.text().collect::<String>();
         let deser: Value = serde_json::from_str(&to_deser)?;
         let songs_list = &deser["songs"]["songs"]["list"];
-        let songs_list = if let Value::Array(sl) = songs_list {
-            let songs = sl
+        
+
+        if let Value::Array(sl) = songs_list {
+            
+            sl
                 .iter()
-                .map(|item| serde_json::from_value(item.clone()).map_err(|e| Error::new(e)))
-                .collect::<Result<Vec<Song>, Error>>();
-            songs
+                .map(|item| serde_json::from_value(item.clone()).map_err(Error::new))
+                .collect::<Result<Vec<Song>, Error>>()
         } else {
             Err(Error::msg("invalid format"))
-        };
-
-        songs_list
+        }
     } else {
         Err(Error::msg("invalid format"))
-    };
-    list
+    }
 }
 
 #[cfg(test)]

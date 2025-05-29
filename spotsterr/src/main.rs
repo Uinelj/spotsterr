@@ -54,7 +54,7 @@ async fn main() {
     while let Some(full_track) = tracks.next().await {
         let full_track = full_track.unwrap();
         let resp = search(&full_track.name).await.unwrap();
-        if let Some(song) = resp.get(0) {
+        if let Some(song) = resp.first() {
             println!("{} -> {}", full_track.name, song.link())
         } else {
             warn!("No song found for track: {}", full_track.name);
