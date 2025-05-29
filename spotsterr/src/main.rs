@@ -4,6 +4,7 @@ use futures_util::StreamExt;
 use playlist::fetch_playlist;
 use rspotify::{AuthCodePkceSpotify, Credentials, OAuth, prelude::*, scopes};
 mod playlist;
+mod score;
 
 #[tokio::main]
 async fn main() {
