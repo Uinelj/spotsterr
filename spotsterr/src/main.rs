@@ -1,7 +1,11 @@
 // #![allow(clippy::assigning_clones)]
 // use futures_util::StreamExt;
 
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    rc::Rc,
+};
 
 use rspotify::{AuthCodePkceSpotify, Credentials, OAuth, prelude::OAuthClient, scopes};
 use url::Url;
@@ -16,10 +20,44 @@ use yew::{Html, function_component, html, use_state};
 // mod playlist;
 // mod score;
 
+#[derive(Debug, Clone)]
+struct AuthCodePkceSpotifyEq(AuthCodePkceSpotify);
+
+impl PartialEq for AuthCodePkceSpotifyEq {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.creds.id == other.0.creds.id && self.0.creds.secret == other.0.creds.secret
+    }
+}
+
 #[derive(Clone, PartialEq)]
 pub struct AuthContext {
-    pub token: RefCell<Option<String>>,
-    // pub spotify: RefCell<AuthCodePkceSpotify>,
+    // pub token: RefCell<Option<String>>,
+    pub spotify: RefCell<Option<AuthCodePkceSpotifyEq>>,
+}
+impl AuthContext {
+    pub fn new(
+        token: Option<String>,
+        client_id: String,
+        redirect_uri: String,
+        scopes: HashSet<String>,
+    ) -> Self {
+        let spotify = AuthCodePkceSpotify::new(
+            Credentials {
+                id: client_id,
+                secret: None,
+            },
+            OAuth {
+                redirect_uri: "http://127.0.0.1:8888/callback".into(),
+                scopes: scopes!("user-read-playback-state"),
+                ..Default::default()
+            },
+        );
+
+        Self {
+            // token: RefCell::new(token),
+            spotify: RefCell::new(Some(AuthCodePkceSpotifyEq(spotify))),
+        }
+    }
 }
 
 #[derive(Clone, Routable, PartialEq)]
@@ -84,26 +122,65 @@ enum Route {
 // }
 //
 
-fn home_no_auth() -> Html {}
+fn home_no_auth(auth_context: AuthContext) -> Html {
+    let mut spotify = AuthCodePkceSpotify::new(
+        Credentials {
+            id: "0613391cb83444989583bf6009fecef6".to_string(),
+            secret: None,
+        },
+        OAuth {
+            redirect_uri: "http://127.0.0.1:8888/callback".into(),
+            scopes: scopes!("user-read-playback-state"),
+            ..Default::default()
+        },
+    );
+    // let ctx = AuthContext::new(
+    //     None,
+    //     "0613391cb83444989583bf6009fecef6".to_string(),
+    //     "http://127.0.0.1:8888/callback".to_string(),
+    //     scopes!("user-read-playback-state"),
+    // );
+
+    let url = { spotify.get_authorize_url(None).unwrap() };
+
+    auth_context
+        .spotify
+        .replace(Some(AuthCodePkceSpotifyEq(spotify)));
+
+    let html_ret = html! {
+        <div>
+            <a href={url}>{ "spotify auth" }</a>
+        </div>
+    };
+
+    html_ret
+}
 
 #[function_component(Home)]
 fn home() -> Html {
     let auth = use_context::<AuthContext>().expect("AuthContext missing");
-    if auth.token.borrow().is_some() {}
-    let creds = Credentials::new("0613391cb83444989583bf6009fecef6", "");
-    let oauth = OAuth {
-        redirect_uri: "http://127.0.0.1:8888/callback".into(),
-        scopes: scopes!("user-read-playback-state"),
-        ..Default::default()
+    let auth_borrow = auth.spotify.borrow();
+    let html_ret = match auth_borrow.as_ref() {
+        Some(auth) => html!(<div>{ "authenticated" }</div>),
+        None => home_no_auth(auth),
     };
-    // let oauth = OAuth::from_env(scopes!("user-read-playback-state")).unwrap();
-    let mut spotify = AuthCodePkceSpotify::new(creds.clone(), oauth.clone());
-    let url = spotify.get_authorize_url(None).unwrap();
-    html! {
-        <div>
-            <a href={url}>{ "spotify auth" }</a>
-        </div>
-    }
+
+    html_ret
+    // if auth.token.borrow().is_some() {}
+    // let creds = Credentials::new("0613391cb83444989583bf6009fecef6", "");
+    // let oauth = OAuth {
+    //     redirect_uri: "http://127.0.0.1:8888/callback".into(),
+    //     scopes: scopes!("user-read-playback-state"),
+    //     ..Default::default()
+    // };
+    // // let oauth = OAuth::from_env(scopes!("user-read-playback-state")).unwrap();
+    // let mut spotify = AuthCodePkceSpotify::new(creds.clone(), oauth.clone());
+    // let url = spotify.get_authorize_url(None).unwrap();
+    // html! {
+    //     <div>
+    //         <a href={url}>{ "spotify auth" }</a>
+    //     </div>
+    // }
 }
 
 #[function_component(Callback)]
