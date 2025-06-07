@@ -1,9 +1,11 @@
 // #![allow(clippy::assigning_clones)]
 // use futures_util::StreamExt;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
 
 use rspotify::{AuthCodePkceSpotify, Credentials, OAuth, prelude::OAuthClient, scopes};
+use url::Url;
+use yew::prelude::Callback as YewCallback;
 use yew::prelude::*;
 use yew_router::{AnyRoute, prelude::*};
 // use playlist::fetch_playlist;
@@ -13,6 +15,12 @@ use yew_router::{AnyRoute, prelude::*};
 use yew::{Html, function_component, html, use_state};
 // mod playlist;
 // mod score;
+
+#[derive(Clone, PartialEq)]
+pub struct AuthContext {
+    pub token: Rc<Option<String>>,
+    pub set_token: YewCallback<String>,
+}
 
 #[derive(Clone, Routable, PartialEq)]
 enum Route {
@@ -115,16 +123,34 @@ fn home() -> Html {
 
 #[function_component(Callback)]
 fn callback() -> Html {
-    // let context = use_route::<Route>().unwrap();
     let location = use_location().unwrap();
-    let state = use_state(|| 0);
+    let auth = use_context::<AuthContext>().expect("AuthContext missing");
     let query = location.query_str();
-    let query = query.strip_prefix("?code=").unwrap();
+    let query = format!("http://a.com/{query}")
+        .parse::<Url>()
+        .unwrap()
+        .query_pairs()
+        .find_map(|(k, v)| {
+            if k == "code" {
+                Some(v.to_string())
+            } else {
+                None
+            }
+        })
+        .unwrap();
+
+    let q2 = query.clone();
+    let tok = auth.token
+    let set_token = auth.set_token.clone();
+    // set_token.emit(query.to_string());
 
     html! {
         <div>
             <p>{ "callback page :)" }</p>
             <p>{ query }</p>
+            <p>{ format!("{:?}", q2) }</p>
+            <p>{ "auth context"}</p>
+            <p>{ format!("{:?}", auth.token)}</p>
         </div>
     }
 }
@@ -141,10 +167,23 @@ fn switch(routes: Route) -> Html {
 
 #[function_component(Main)]
 fn app() -> Html {
+    let token = use_state(|| None);
+    let context = AuthContext {
+        token: Rc::new((*token).clone()),
+        set_token: {
+            let token = token.clone();
+            YewCallback::from(move |new_token: String| {
+                token.set(Some(new_token));
+            })
+        },
+    };
+
     html! {
+        <ContextProvider<AuthContext> context={context}>
         <BrowserRouter>
             <Switch<Route> render={switch} /> // <- must be child of <BrowserRouter>
-        </BrowserRouter>
+            </BrowserRouter>
+        </ContextProvider<AuthContext>>
     }
 }
 
