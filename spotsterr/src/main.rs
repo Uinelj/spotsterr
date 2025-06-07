@@ -1,13 +1,20 @@
 // #![allow(clippy::assigning_clones)]
 // use futures_util::StreamExt;
 
+use gloo_console::log;
+use pollster::FutureExt as _;
 use std::{
-    cell::RefCell,
+    cell::{BorrowError, RefCell},
     collections::{HashMap, HashSet},
     rc::Rc,
 };
+use wasm_bindgen::JsValue;
 
-use rspotify::{AuthCodePkceSpotify, Credentials, OAuth, prelude::OAuthClient, scopes};
+use rspotify::{
+    AuthCodePkceSpotify, Credentials, OAuth,
+    prelude::{BaseClient, OAuthClient},
+    scopes,
+};
 use url::Url;
 use yew::prelude::Callback as YewCallback;
 use yew::prelude::*;
@@ -26,6 +33,7 @@ struct AuthCodePkceSpotifyEq(AuthCodePkceSpotify);
 impl PartialEq for AuthCodePkceSpotifyEq {
     fn eq(&self, other: &Self) -> bool {
         self.0.creds.id == other.0.creds.id && self.0.creds.secret == other.0.creds.secret
+        // false
     }
 }
 
@@ -57,6 +65,10 @@ impl AuthContext {
             // token: RefCell::new(token),
             spotify: RefCell::new(Some(AuthCodePkceSpotifyEq(spotify))),
         }
+    }
+
+    pub fn is_authenticated(&self) -> Result<bool, BorrowError> {
+        Ok(self.spotify.try_borrow()?.is_some())
     }
 }
 
@@ -134,22 +146,27 @@ fn home_no_auth(auth_context: AuthContext) -> Html {
             ..Default::default()
         },
     );
-    // let ctx = AuthContext::new(
-    //     None,
-    //     "0613391cb83444989583bf6009fecef6".to_string(),
-    //     "http://127.0.0.1:8888/callback".to_string(),
-    //     scopes!("user-read-playback-state"),
-    // );
+
+    log!("new spotify", JsValue::from(format!("{:?}", spotify)));
 
     let url = { spotify.get_authorize_url(None).unwrap() };
+    log!("new spotify", JsValue::from(format!("{:?}", spotify)));
 
+    log!(
+        "auth_context.spotify before",
+        JsValue::from(format!("{:?}", auth_context.spotify))
+    );
     auth_context
         .spotify
         .replace(Some(AuthCodePkceSpotifyEq(spotify)));
+    log!(
+        "auth_context.spotify after",
+        JsValue::from(format!("{:?}", auth_context.spotify))
+    );
 
     let html_ret = html! {
         <div>
-            <a href={url}>{ "spotify auth" }</a>
+            <a href={url} target="_blank">{ "spotify auth" }</a>
         </div>
     };
 
@@ -159,34 +176,27 @@ fn home_no_auth(auth_context: AuthContext) -> Html {
 #[function_component(Home)]
 fn home() -> Html {
     let auth = use_context::<AuthContext>().expect("AuthContext missing");
-    let auth_borrow = auth.spotify.borrow();
-    let html_ret = match auth_borrow.as_ref() {
-        Some(auth) => html!(<div>{ "authenticated" }</div>),
-        None => home_no_auth(auth),
-    };
-
-    html_ret
-    // if auth.token.borrow().is_some() {}
-    // let creds = Credentials::new("0613391cb83444989583bf6009fecef6", "");
-    // let oauth = OAuth {
-    //     redirect_uri: "http://127.0.0.1:8888/callback".into(),
-    //     scopes: scopes!("user-read-playback-state"),
-    //     ..Default::default()
-    // };
-    // // let oauth = OAuth::from_env(scopes!("user-read-playback-state")).unwrap();
-    // let mut spotify = AuthCodePkceSpotify::new(creds.clone(), oauth.clone());
-    // let url = spotify.get_authorize_url(None).unwrap();
-    // html! {
-    //     <div>
-    //         <a href={url}>{ "spotify auth" }</a>
-    //     </div>
-    // }
+    log!(
+        "before if AuthContext",
+        JsValue::from(format!("{:?}", auth.spotify))
+    );
+    let is_authenticated = auth.is_authenticated().unwrap();
+    if is_authenticated {
+        html!(<div>{ "authenticated" }</div>)
+    } else {
+        home_no_auth(auth)
+    }
 }
 
 #[function_component(Callback)]
 fn callback() -> Html {
     let location = use_location().unwrap();
     let auth = use_context::<AuthContext>().expect("AuthContext missing");
+
+    log!(
+        "Callback called",
+        JsValue::from(format!("{:?}", auth.spotify))
+    );
     let query = location.query_str();
     let query = format!("http://a.com/{query}")
         .parse::<Url>()
@@ -201,19 +211,25 @@ fn callback() -> Html {
         })
         .unwrap();
 
-    // let q2 = query.clone();
-    {
-        let mut tok = auth.token.try_borrow_mut().unwrap();
-        *tok = Some(query);
+    async {
+        let spot_borrow = auth.spotify.borrow();
+        spot_borrow
+            .as_ref()
+            .unwrap()
+            .0
+            .request_token(&query)
+            .await
+            .unwrap();
     }
+    .block_on();
 
     html! {
         <div>
             <p>{ "callback page :)" }</p>
             // <p>{ query }</p>
-            <p>{ format!("{:?}", auth.token) }</p>
+            <p>{ format!("{:?}", query) }</p>
             <p>{ "auth context"}</p>
-            <p>{ format!("{:?}", auth.token)}</p>
+            <p>{ format!("{:?}", query)}</p>
         </div>
     }
 }
@@ -231,18 +247,13 @@ fn switch(routes: Route) -> Html {
 #[function_component(Main)]
 fn app() -> Html {
     // let token = use_state(|| None);
-    let context = AuthContext {
-        token: RefCell::new(None),
-        // set_token: {
-        //     let token = token.clone();
-        //     YewCallback::from(move |new_token: String| {
-        //         token.set(Some(new_token));
-        //     })
-        // },
-    };
-
+    let context = use_state(|| AuthContext {
+        spotify: RefCell::new(None),
+    });
+    let object = JsValue::from("world");
+    log!("Hello", object);
     html! {
-        <ContextProvider<AuthContext> context={context}>
+        <ContextProvider<AuthContext> context={(*context).clone()}>
         <BrowserRouter>
             <Switch<Route> render={switch} /> // <- must be child of <BrowserRouter>
             </BrowserRouter>
