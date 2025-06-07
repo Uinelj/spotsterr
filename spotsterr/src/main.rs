@@ -1,7 +1,7 @@
 // #![allow(clippy::assigning_clones)]
 // use futures_util::StreamExt;
 
-use std::{collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use rspotify::{AuthCodePkceSpotify, Credentials, OAuth, prelude::OAuthClient, scopes};
 use url::Url;
@@ -18,8 +18,8 @@ use yew::{Html, function_component, html, use_state};
 
 #[derive(Clone, PartialEq)]
 pub struct AuthContext {
-    pub token: Rc<Option<String>>,
-    pub set_token: YewCallback<String>,
+    pub token: RefCell<Option<String>>,
+    // pub spotify: RefCell<AuthCodePkceSpotify>,
 }
 
 #[derive(Clone, Routable, PartialEq)]
@@ -82,27 +82,14 @@ enum Route {
 //         }
 //     }
 // }
+//
+
+fn home_no_auth() -> Html {}
 
 #[function_component(Home)]
 fn home() -> Html {
-    // let counter = use_state(|| 0);
-    // let onclick = {
-    //     let counter = counter.clone();
-    //     move |_| {
-    //         let value = *counter + 1;
-    //         counter.set(value);
-    //     }
-    // };
-
-    // let url =
-
-    // html! {
-    //     <div>
-    //         <button {onclick}>{ "+1" }</button>
-    //         <p>{ *counter }</p>
-    //     </div>
-    // }
-
+    let auth = use_context::<AuthContext>().expect("AuthContext missing");
+    if auth.token.borrow().is_some() {}
     let creds = Credentials::new("0613391cb83444989583bf6009fecef6", "");
     let oauth = OAuth {
         redirect_uri: "http://127.0.0.1:8888/callback".into(),
@@ -112,10 +99,8 @@ fn home() -> Html {
     // let oauth = OAuth::from_env(scopes!("user-read-playback-state")).unwrap();
     let mut spotify = AuthCodePkceSpotify::new(creds.clone(), oauth.clone());
     let url = spotify.get_authorize_url(None).unwrap();
-    println!("{:?}", url);
     html! {
         <div>
-            <p>{ "+1" }</p>
             <a href={url}>{ "spotify auth" }</a>
         </div>
     }
@@ -139,16 +124,17 @@ fn callback() -> Html {
         })
         .unwrap();
 
-    let q2 = query.clone();
-    let tok = auth.token
-    let set_token = auth.set_token.clone();
-    // set_token.emit(query.to_string());
+    // let q2 = query.clone();
+    {
+        let mut tok = auth.token.try_borrow_mut().unwrap();
+        *tok = Some(query);
+    }
 
     html! {
         <div>
             <p>{ "callback page :)" }</p>
-            <p>{ query }</p>
-            <p>{ format!("{:?}", q2) }</p>
+            // <p>{ query }</p>
+            <p>{ format!("{:?}", auth.token) }</p>
             <p>{ "auth context"}</p>
             <p>{ format!("{:?}", auth.token)}</p>
         </div>
@@ -167,15 +153,15 @@ fn switch(routes: Route) -> Html {
 
 #[function_component(Main)]
 fn app() -> Html {
-    let token = use_state(|| None);
+    // let token = use_state(|| None);
     let context = AuthContext {
-        token: Rc::new((*token).clone()),
-        set_token: {
-            let token = token.clone();
-            YewCallback::from(move |new_token: String| {
-                token.set(Some(new_token));
-            })
-        },
+        token: RefCell::new(None),
+        // set_token: {
+        //     let token = token.clone();
+        //     YewCallback::from(move |new_token: String| {
+        //         token.set(Some(new_token));
+        //     })
+        // },
     };
 
     html! {
